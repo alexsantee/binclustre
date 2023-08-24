@@ -4,44 +4,33 @@ import ncd2 as ncd
 import csv
 
 distance_metrics = {
-    "ncd_gzip": {
-        "function": "gzip_func",
-    },
-    "ncd_bzip2": {
-        "function": "bzip2_func",
-    },
-    "ncd_ppmd": {
-        "function": "ppmd_func",
+    "ncd": {
+        "function": "ncd_func",
     },
 }
 
-def distance_matrix(input_folder, output_file, method):
-    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+def distance_matrix(input_folder, output_file, method, **kwargs):
+    input_folder = Path(input_folder)
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     f = globals()[distance_metrics[method]["function"]]
-    matrix = f(input_folder, output_file)
+    matrix = f(input_folder, output_file, **kwargs)
     return matrix
 
 ncdp_strategies = ncdp.strategies
-def bzip2_func(input_folder, output_file):
-    return ncd(input_folder, output_file, "bzip2")
-def  gzip_func(input_folder, output_file):
-    return ncd(input_folder, output_file,  "gzip")
-def  ppmd_func(input_folder, output_file):
-    return ncd(input_folder, output_file,  "ppmd")
-def ncd(input_folder, output_file, compressor):
+def ncd_func(input_folder, output_file, compressor, pre_processing, no_normalize, cache_path, num_threads):
     from datasource import create_factory
     from compressor import get_compressor
-    from ncd2 import distance_matrix
+    import ncd2 as ncd
+    output_file = f"{output_file}-{compressor}"
 
-    # TOOL IS CURRENTLY HARDCODED ###########################################
-    preprocessed_folder = ncdp.preprocess_folder(input_folder, "radare-cfg", no_normalize=False)
-
-    # PREPROCESSED FOLDER COLISION ##########################################
-    factory = [create_factory(preprocessed_folder)]
+    preprocessed_folder = ncdp.preprocess_folder(input_folder, cache_path, pre_processing, no_normalize, num_threads)
+    factory = [create_factory(str(preprocessed_folder))]
     compressor = get_compressor(compressor)
-    matrix = distance_matrix(factory, compressor, is_parallel=True)
+    matrix = ncd.distance_matrix(factory, compressor, is_parallel=True)
 
     csv_reader = matrix.get_results()
+
     with open(output_file, "wt") as fp:
         csv_writer = csv.writer(fp)
         for pair in csv_reader:

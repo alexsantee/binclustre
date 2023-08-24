@@ -4,38 +4,32 @@ import subprocess
 import re
 from time import time
 from multiprocessing import Pool
+from pathlib import Path
 
 strategies = {
     "angr-cfg": {
         "function": "angr_func",
         "norm_function": "angr_norm",
-        "suffix": ".cg"
     },
     "radare-cfg": {
         "function": "radare_func",
         "norm_function": "radare_norm",
-        "suffix": ".json"
     },
     "ghidra-pseudocode": {
         "function": "ghidra_func",
         "norm_function": "ghidra_norm",
-        "suffix": ".c"
     },
     "retdec-llvmir": {
         "function": "retdec_llvm_func",
-        "suffix": ".bc"
     },
     "retdec-pseudocode": {
         "function": "retdec_pseudocode_func",
-        "suffix": ".c"
     },
     "strings": {
         "function": "strings_func",
-        "suffix": ".txt"
     },
     "raw-binary": {
         "function" : "raw_func",
-        "suffix": ".elf"
     },
 }
 
@@ -45,9 +39,9 @@ binary is the binary name
 inpath is the binary location
 outpath is the analysis result destination
 """
-def analyse(static_tool, binary, inpath, outpath):
-    f = globals()[strategies[static_tool]["function"]]
-    f(binary, inpath, outpath)
+def analyse(tool, inpath, outpath):
+    f = globals()[strategies[tool]["function"]]
+    f(inpath,outpath)
 
 """
 Does an adress normalization to the static_tool output
@@ -55,10 +49,9 @@ binary is the binary name
 inpath is the binary location
 outpath is the analysis result destination
 """
-def normalize(tool, binary, inpath):
-    suffix = strategies[tool]["suffix"]
+def normalize(tool,inpath,outpath):
     f = globals()[strategies[tool]["norm_function"]]
-    f(f"{binary}{suffix}", inpath)
+    f(inpath,outpath)
 
 """
 Executes preprocessing for a file
@@ -68,48 +61,46 @@ binary_folder is the folder containing the binary
 analysis is the preprocessing result destination
 no_normalize indicates if the normalization step should be skipped
 """
-def preprocess_file(tool, inputbinary, binary_folder, analysis_path, no_normalize=False):
-    suffix = strategies[tool]["suffix"]
-
-    print(f"[+] Analysing {inputbinary}")
-    if os.path.isfile(f"{analysis_path}results/{inputbinary}{suffix}"):
-        print(f"[+] Using cached version at {analysis_path}results/{inputbinary}{suffix}")
+def preprocess_file(tool, inpath, outpath, no_normalize=False):
+    print(f"[+] Analysing {inpath.name}")
+    analysis_outpath = outpath.joinpath("analysis/").joinpath(inpath.name)
+    if os.path.isfile(analysis_outpath):
+        print(f"[+] Using cached version at {analysis_outpath}")
     else:
         start = time()
-        analyse(tool, inputbinary, binary_folder, analysis_path)
+        analyse(tool, inpath, analysis_outpath)
         end = time()
-        print(f"[+] {inputbinary} analysed in {(end-start):.2f} s")
+        print(f"[+] {inpath.name} analysed in {(end-start):.2f} s")
 
 
     if not no_normalize:
-        print(f"[+] Normalizing {inputbinary}")
-        if os.path.isfile(f"{analysis_path}normalized/{inputbinary}{suffix}"):
-            print(f"[+] Using cached version at {analysis_path}normalized/{inputbinary}{suffix}")
+        print(f"[+] Normalizing {inpath.name}")
+        normalize_outpath = outpath.joinpath("normalized/").joinpath(inpath.name)
+        if os.path.isfile(normalize_outpath):
+            print(f"[+] Using cached version at {normalize_outpath}")
         else:
             start = time()
-            normalize(tool, inputbinary, analysis_path)
+            normalize(tool, analysis_outpath, normalize_outpath)
             end = time()
-            print(f"[+] {inputbinary} normalized in {(end-start):.2f} s")
+            print(f"[+] {inpath.name} normalized in {(end-start):.2f} s")
 
-def preprocess_folder(input_folder, tool, no_normalize=False):
-    inputbinaries = os.listdir(input_folder)
-    inputbinaries.sort()
-    # CACHE PATH CURRENTLY HARDCODED ###########################################
-    output_folder = "outputs/"
+def preprocess_folder(input_folder, output_folder, tool, no_normalize=False, num_threads=os.cpu_count()):
+    binaries = os.listdir(input_folder)
+    binaries.sort()
+    outpath = Path(output_folder)
     TASKS = [
-        (tool, inputbinary, input_folder, f"{output_folder}/{tool}/", no_normalize)
-        for inputbinary in inputbinaries
+        (tool, input_folder.joinpath(binary), outpath, no_normalize)
+        for binary in binaries
     ]
-    # NUMBER OF THREADS HARDCODED ##############################################
     print(f"[+] Starting pre-processing with {tool} method")
-    with Pool(1+0*os.cpu_count()) as p:
+    with Pool(num_threads) as p:
         p.starmap(preprocess_file, TASKS)
     if no_normalize:
-        return f"{output_folder}/{tool}/results/"
-    return f"{output_folder}/{tool}/normalized/"
+        return outpath.joinpath("analysis")
+    return outpath.joinpath("normalized")
 
 # Static Analysis functions:
-def angr_func(binary, inpath, outpath):
+def angr_func(inpath,outpath):
     import angrutils as au
     import modules.angr_module as angr_m
     import logging
@@ -118,41 +109,45 @@ def angr_func(binary, inpath, outpath):
     logging.getLogger('cle.backends.externs').setLevel('ERROR')
     logging.getLogger('cle.loader').setLevel('ERROR')
 
-    p = au.angr.Project(f"{inpath}/{binary}", auto_load_libs=False)
+    p = au.angr.Project(inpath, auto_load_libs=False)
     cfg = p.analyses.CFGFast(normalize=True)
-    angr_m.generate_cg(cfg, binary, f"{outpath}/results/")
+    angr_m.generate_cg(cfg, inpath.name, outpath.parent)
 
-def radare_func(binary, inpath, outpath):
-    p = subprocess.run(["r2", "-A", "-q", "-c", "agCj", f"{inpath}/{binary}"], capture_output=True)
-    print(f"{outpath}/results/{binary}.json")
-    with open(f"{outpath}/results/{binary}.json", "wb") as fp:
+def radare_func(inpath,outpath):
+    p = subprocess.run(["r2", "-A", "-q", "-c", "agCj", inpath], capture_output=True)
+    with open(outpath, "wb") as fp:
         fp.write(p.stdout)
     for line in p.stderr.decode().split("\n"):
-        print(f"{binary}: {line}")
+        print(f"{inpath.name}: {line}")
     if p.returncode != 0:
-        print(f"[!] radare returned {p.returncode} for {binary}")
+        print(f"[!] radare returned {p.returncode} for {inpath.name}")
 
-def ghidra_func(binary, inpath, outpath):
-    p = subprocess.run(["ghidra/support/analyzeHeadless", f"{outpath}/ghidra-project",
-                    f"{binary}", "-import", f"{inpath}/{binary}", "-scriptPath",
-                    "./auxiliaries/ghidra/scripts/", "-postScript",
-                    "./auxiliaries/ghidra/scripts/decompiler.py", f"{outpath}/results/{binary}.c"],
-                    stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, timeout=None)
+def ghidra_func(inpath,outpath):
+    proj_path = outpath.parents[1].joinpath("ghidra-project/")
+    p = subprocess.run(["ghidra/support/analyzeHeadless",
+                        proj_path, inpath.name,
+                        "-import", inpath,
+                        "-scriptPath", "./modules/",
+                        "-postScript", "./modules/ghidra_decompiler.py",
+                        outpath],
+                        stderr=subprocess.PIPE,
+                        stdout=subprocess.DEVNULL,
+                        timeout=None)
     for line in p.stderr.decode().split("\n"):
-        print(f"{binary}: {line}")
+        print(f"{inpath.name}: {line}")
     if p.returncode != 0:
-        print(f"[!] ghidra returned {p.returncode} for {binary}")
-    shutil.rmtree(f"{outpath}/ghidra-project/{binary}.rep")
-    os.remove(f"{outpath}/ghidra-project/{binary}.gpr")
+        print(f"[!] ghidra returned {p.returncode} for {inpath.name}")
+    shutil.rmtree(proj_path.joinpath(f"{inpath.name}.rep"))
+    os.remove(proj_path.joinpath(f"{inpath.name}.gpr"))
 
-def retdec_llvm_func(binary, inpath, outpath):
+def retdec_llvm_func(inpath,outpath):
     p = subprocess.run(["retdec-decompiler.py", "--keep-unreachable-funcs", "--stop-after", "bin2llvmir",
-                        "-o", f"{outpath}/results/{binary}.bc", f"{inpath}/{binary}"],
+                        "-o", outpath, inpath],
                        stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
     for line in p.stderr.decode().split("\n"):
-        print(f"{binary}: {line}")
+        print(f"{inpath.name}: {line}")
     if p.returncode != 0:
-        print(f"[!] RetDec returned {p.returncode} for {binary}")
+        print(f"[!] RetDec returned {p.returncode} for {inpath.name}")
     """
     # The --Os optimization should give better results, but crashes in some cases
     p = subprocess.run(["opt", f"{outpath}/results/{binary}.bc", #"--Os",
@@ -164,35 +159,49 @@ def retdec_llvm_func(binary, inpath, outpath):
         print(f"[!] opt returned {p.returncode} for {binary}")
     """
     # Removes extra files
-    subprocess.run(["rm", f"{outpath}/results/{binary}.config.json", f"{outpath}/results/{binary}.ll", f"{outpath}/results/{binary}.dsm"], capture_output=subprocess.DEVNULL)
+    filelist = os.listdir(outpath.parent)
+    for file in filelist:
+        extension = file.split(".")[-1]
+        fullpath = outpath.parent.joinpath(file)
+        if extension in {"bc", "dsm", "json"}:
+            os.remove(fullpath)
+        elif extension == "ll":
+            os.rename(fullpath, str(fullpath)[:-3])
 
-def retdec_pseudocode_func(binary, inpath, outpath):
-    p = subprocess.run(["retdec-decompiler.py", "--keep-unreachable-funcs", f"{inpath}/{binary}",
-                        "-o", f"{outpath}/results/{binary}.c"],
+def retdec_pseudocode_func(inpath,outpath):
+    p = subprocess.run(["retdec-decompiler.py", "--keep-unreachable-funcs", inpath,
+                        "-o", outpath],
                        stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
     for line in p.stderr.decode().split("\n"):
-        print(f"{binary}: {line}")
+        print(f"{inpath.name}: {line}")
     if p.returncode != 0:
-        print(f"[!] retdec returned {p.returncode} for {binary}")
+        print(f"[!] retdec returned {p.returncode} for {inpath.name}")
     # Removes extra files
-    subprocess.run(["rm", f"{outpath}/results/{binary}.config.json", f"{outpath}/results/{binary}.ll", f"{outpath}/results/{binary}.bc", f"{outpath}/results/{binary}.dsm"], capture_output=subprocess.DEVNULL)
+    filelist = os.listdir(outpath.parent)
+    for file in filelist:
+        extension = file.split(".")[-1]
+        fullpath = outpath.parent.joinpath(file)
+        if extension in {"bc", "dsm", "json", "ll"}:
+            os.remove(fullpath)
+        elif extension == "c":
+            os.rename(fullpath, str(fullpath)[:-2])
 
-def strings_func(binary, inpath, outpath):
-    p = subprocess.run(["strings", f"{inpath}/{binary}"], capture_output=True)
-    with open(f"{outpath}/results/{binary}.txt", "wb") as fp:
+def strings_func(inpath,outpath):
+    p = subprocess.run(["strings", inpath], capture_output=True)
+    with open(outpath, "wb") as fp:
         fp.write(p.stdout)
     for line in p.stderr.decode().split("\n"):
-        print(f"{binary}: {line}")
+        print(f"{inpath.name}: {line}")
     if p.returncode != 0:
-        print(f"[!] strings returned {p.returncode} for {binary}")
+        print(f"[!] strings returned {p.returncode} for {inpath.name}")
 
-def raw_func(binary, inpath, outpath):
-    subprocess.run(["cp", f"{inpath}/{binary}", f"{outpath}/results/{binary}.elf"],
+def raw_func(inpath,outpath):
+    subprocess.run(["cp", inpath, outpath],
                    capture_output=subprocess.DEVNULL)
 
 # Normalization functions:
-def angr_norm(infile, inpath):
-    with open(f"{inpath}/results/{infile}", "r") as callgraphfile:
+def angr_norm(inpath, outpath):
+    with open(inpath, "r") as callgraphfile:
         #print(f"[+] Analysing callgraph: {inpath}/results/{infile}")
 
         callgraph = callgraphfile.read()
@@ -238,14 +247,12 @@ def angr_norm(infile, inpath):
             callgraph = callgraph.replace(addr, normalized)
             pointeraddressindex += 1
 
-        with open(f"{inpath}/normalized/{infile}", "w") as pseudocodenormalizedfile:
-            #print(f"[+] Writting normalized callgraph: {inpath}/normalized/{infile}.cg")
+        with open(outpath, "w") as pseudocodenormalizedfile:
+            #print(f"[+] Writting normalized callgraph: {inpath}/normalized/{infile}")
             pseudocodenormalizedfile.write(callgraph)
 
-def radare_norm(infile, inpath):
-    with open(f"{inpath}/results/{infile}", "r") as callgraphfile:
-        #print(f"[+] Analysing callgraph: {inpath}/results/{infile}")
-
+def radare_norm(inpath, outpath):
+    with open(inpath, "r") as callgraphfile:
         callgraph = callgraphfile.read()
 
         alladdressesindex = 0
@@ -301,13 +308,13 @@ def radare_norm(infile, inpath):
             callgraph = callgraph.replace(addr, normalized)
             pointeraddressindex += 1
 
-        with open(f"{inpath}/normalized/{infile}", "w") as pseudocodenormalizedfile:
+        with open(outpath, "w") as pseudocodenormalizedfile:
             #print(f"[+] Writting normalized callgraph: {inpath}/normalized/{infile}")
             pseudocodenormalizedfile.write(callgraph)
 
-def ghidra_norm(infile, inpath):
+def ghidra_norm(inpath, outpath):
     normalize_string_pointers = True
-    with open(f"{inpath}/results/{infile}", "r") as pseudocodefile:
+    with open(inpath, "r") as pseudocodefile:
        #print(f"[+] Analysing pseudocode: {inpath}/results/{infile}")
 
        pseudocode = pseudocodefile.read()
@@ -402,6 +409,6 @@ def ghidra_norm(infile, inpath):
                pseudocode = pseudocode.replace(string_pointer, normalized_string)
 
        # write normalized pseudocode to output file
-       with open(f"{inpath}/normalized/{infile}", "w") as pseudocodenormalizedfile:
+       with open(outpath, "w") as pseudocodenormalizedfile:
            #print(f"[+] Writting normalized pseudocode: {inpath}/normalized/{infile}")
            pseudocodenormalizedfile.write(pseudocode)

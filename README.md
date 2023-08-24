@@ -2,21 +2,60 @@
 Binclustre is a tool designed to cluster binary files, applying multiple strategies to compare its output results.
 To do so, It relies on other tools to automate reverse engineering tasks and apply machine learning algorithms.
 
+## Architecture
+
+```
+       +----------+ Distance +------------+
+ Files | Distance |  Matrix  | Clustering | Clusters
+------>|  Metric  |--------->|   Method   |--------->
+       +----------+          +------------+
+```
+
+Binclustre's architecture divides the clustering in two steps, a pairwise distance calculation and cluster detection.
+These steps are kept separate so that it's easier to integrate them into the pipeline to experiment with different methods.
+The `modules/distances.py` file contains functions that creates distance matrixes and `modulres/clusters.py` contain functions for cluster detection.
+
+## Default Folder Structure
+| Path | Description |
+|------|-------------|
+|caches | Caches for all intermediary operations |
+|results | Clustering results |
+|modules | Scripts to integrate tools to the pipeline |
+
 ## Dependencies
-- Damicore - Clustering and classification tool
+
+The Python dependencies can be installed with the command `pip install -r requirements.txt`
+
+The available tools integrated into the clustering methods are:
+
+- Damicore - NCD distance calculation and clustering method by simplification + community detection
 
         https://gitlab.com/monaco/damicore
 
-- Ghidra - Reverse Engineering tool
+- Radare - Creates Control-Flow Graph for binaries
+
+        https://github.com/radareorg/radare2
+
+- Ghidra - Creates C pseudocode for binaries by decompilation [^1]
 
         https://github.com/NationalSecurityAgency/ghidra
 
-## Folder Structure
-| Path | Description |
-|------|-------------|
-|auxiliares | Scripts used to assist with Reverse Engineering tasks |
-|datasets | Data used to label the clustering output |
-|input-binaries | Binary files that will be used for RE tasks and Clustering |
-|notebooks | Jupyter notebooks used for prototyping this tool |
-|outputs | Outputs from RE tasks |
-|results | Clustering results |
+[^1]: Ghidra has to be installed at a folder called `ghidra` together with `binclustre.py`
+
+- RetDec v4.0 - Creates C pseudocode or LLVM Intermediary Representation
+
+        https://github.com/avast/retdec/releases/tag/v4.0
+
+## Docker
+
+There is a docker script that manages all dependencies automatically, it can be built with `docker build -t binclustre ./`
+
+To run the container it's necessary to create bind mounts so it can read and write files to your filesystem, it's usage is:
+
+```
+docker run \
+-v <input-folder>:/usr/src/app/input-binaries/ \
+-v $PWD/results:/usr/src/app/results/ \
+-v $PWD/caches:/usr/src/app/caches/ \
+binclustre input-binaries/ <args>
+```

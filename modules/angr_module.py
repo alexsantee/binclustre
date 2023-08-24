@@ -194,7 +194,7 @@ class _DotOutput(Output):
         #         p.wait()
 
         # print(ret)
-        with open(f"{self.outputpath}/{self.fname}.cg", "w") as outputfile:
+        with open(f"{self.outputpath}/{self.fname}", "w") as outputfile:
             outputfile.write(ret)
 
         # if self.fname:

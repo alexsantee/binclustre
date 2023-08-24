@@ -21,14 +21,13 @@ RUN wget https://github.com/avast/retdec/releases/download/v4.0/retdec-v4.0-debi
 ENV PATH=${PATH}:/usr/src/app/retdec/bin/
 
 # install damicore
-RUN apt-get install -y python3-igraph python3-cairo 
+RUN apt-get install -y python3-igraph python3-cairo
 RUN wget https://gitlab.uspdigital.usp.br/acbd/damicore-python3/-/archive/7a4a51525db0d698c588eecf24cd84d10473d46f/damicore-python3-7a4a51525db0d698c588eecf24cd84d10473d46f.zip && unzip damicore-python3-7a4a51525db0d698c588eecf24cd84d10473d46f.zip && rm damicore-python3-7a4a51525db0d698c588eecf24cd84d10473d46f.zip && mv damicore-python3-7a4a51525db0d698c588eecf24cd84d10473d46f damicore
 RUN pip3 install igraph
 ENV PYTHONPATH=${PYTHONPATH}:/usr/src/app/damicore/damicore/
 
 # install binclustre
 COPY binclustre.py ./
-COPY auxiliaries ./auxiliaries/
 COPY modules ./modules/
 
 RUN python -m py_compile binclustre.py ./modules/*.py

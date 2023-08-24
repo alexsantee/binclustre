@@ -13,12 +13,14 @@ Does clustering using a given clusterer
 inpath is the location with static analysis files
 outpath is the clustering result destination
 """
-def cluster(distance_matrix, output_file, method, num_clusters=None):
+def cluster(distance_matrix, output_file, method, **kwargs):
+    distance_matrix = Path(distance_matrix)
+    output_file = Path(output_file)
     f = globals()[clusterers[method]["function"]]
-    clusters = f(distance_matrix, output_file, num_clusters)
+    clusters = f(distance_matrix, output_file, **kwargs)
     return clusters
 
-def damicore_func(distance_matrix, output_file, num_clusters=None, community_detection_name="fast",
+def damicore_func(distance_matrix, output_file, num_clusters=None, community_detection="fast",
                   is_normalize_matrix=True,is_normalize_weights=True):
     import clustering as c
     import tree_simplification as nj
@@ -49,8 +51,8 @@ def damicore_func(distance_matrix, output_file, num_clusters=None, community_det
             e["length"] = 1e-12
 
     # Saves tree intermediate result
-    output_folder = Path(output_file).parent
-    tree_filename = Path("tree.newick")
+    output_folder = output_file.parent
+    tree_filename = "tree.newick"
     with open(output_folder.joinpath(tree_filename), 'wt') as f:
         f.write(newick_format(tree))
 
@@ -59,7 +61,7 @@ def damicore_func(distance_matrix, output_file, num_clusters=None, community_det
     membership, _, _ = c.tree_clustering(g, ids,
         is_normalize_weights=is_normalize_weights,
         num_clusters=num_clusters,
-        community_detection_name=community_detection_name)
+        community_detection_name=community_detection)
 
     # Saves clustering results
     with open(output_file, "wt") as fp:
