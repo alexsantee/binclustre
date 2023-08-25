@@ -21,6 +21,7 @@ The `modules/distances.py` file contains functions that creates distance matrixe
 |caches | Caches for all intermediary operations |
 |results | Clustering results |
 |modules | Scripts to integrate tools to the pipeline |
+|datasets | Example executable binary files |
 
 ## Dependencies
 
