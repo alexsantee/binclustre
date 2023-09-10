@@ -19,15 +19,15 @@ def distance_matrix(input_folder, output_file, method, **kwargs):
 
 ncdp_strategies = ncdp.strategies
 def ncd_func(input_folder, output_file, compressor, pre_processing, no_normalize, cache_path, num_threads):
-    from datasource import create_factory
+    from datasource import InMemoryFactory, Filename
     from compressor import get_compressor
     import ncd2 as ncd
     output_file = f"{output_file}-{compressor}"
 
-    preprocessed_folder = ncdp.preprocess_folder(input_folder, cache_path, pre_processing, no_normalize, num_threads)
-    factory = [create_factory(str(preprocessed_folder))]
+    preprocessed_files = ncdp.preprocess_folder(input_folder, cache_path, pre_processing, no_normalize, num_threads)
+    factory = InMemoryFactory( [Filename(file) for file in preprocessed_files] )
     compressor = get_compressor(compressor)
-    matrix = ncd.distance_matrix(factory, compressor, is_parallel=True)
+    matrix = ncd.distance_matrix([factory], compressor, is_parallel=True)
 
     csv_reader = matrix.get_results()
 

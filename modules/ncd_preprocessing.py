@@ -95,9 +95,16 @@ def preprocess_folder(input_folder, output_folder, tool, no_normalize=False, num
     print(f"[+] Starting pre-processing with {tool} method")
     with Pool(num_threads) as p:
         p.starmap(preprocess_file, TASKS)
+
+    # return list of pre_processed files
+    outfiles = []
     if no_normalize:
-        return outpath.joinpath("analysis")
-    return outpath.joinpath("normalized")
+        for binary in binaries:
+            outfiles.append( str(outpath.joinpath("analysis/").joinpath(binary)) )
+    else:
+        for binary in binaries:
+            outfiles.append( str(outpath.joinpath("normalized/").joinpath(binary)) )
+    return outfiles
 
 # Static Analysis functions:
 def angr_func(inpath,outpath):
