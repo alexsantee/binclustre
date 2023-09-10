@@ -27,6 +27,8 @@ The `modules/distances.py` file contains functions that creates distance matrixe
 
 The Python dependencies can be installed with the command `pip install -r requirements.txt`
 
+After installing a tool be sure it is available in PATH, this can be made by running `export PATH=${PATH}:<path/to/binary>` for binary aplications or `export PYTHONPATH=${PYTHONPATH}:</path/to/script>` for python modules.
+
 The available tools integrated into the clustering methods are:
 
 - Damicore - NCD distance calculation and clustering method by simplification + community detection
